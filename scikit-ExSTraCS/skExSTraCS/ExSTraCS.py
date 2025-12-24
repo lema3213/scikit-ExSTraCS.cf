@@ -18,10 +18,10 @@ import random
 class ExSTraCS(BaseEstimator,ClassifierMixin):
     def __init__(self,learning_iterations=100000,N=1000,nu=1,chi=0.8,mu=0.04,theta_GA=25,theta_del=20,theta_sub=20,
                  acc_sub=0.99,beta=0.2,delta=0.1,init_fitness=0.01,fitness_reduction=0.1,theta_sel=0.5,rule_specificity_limit=None,
-                 do_correct_set_subsumption=False,do_GA_subsumption=True,selection_method='tournament',do_attribute_tracking=True,
-                 do_attribute_feedback=True,attribute_tracking_method='add',attribute_tracking_beta = 0.1,expert_knowledge=None,
+                 do_correct_set_subsumption=False,do_GA_subsumption=True,selection_method='tournament',do_attribute_tracking=False,
+                 do_attribute_feedback=False,attribute_tracking_method='add',attribute_tracking_beta = 0.1,expert_knowledge=None,
                  rule_compaction='QRF',reboot_filename=None,discrete_attribute_limit=10,specified_attributes=np.array([]),
-                 track_accuracy_while_fit=False,random_state=None):
+                 track_accuracy_while_fit=True,random_state=None,level=1,log_dir="",log_trainingfile_name="ab.txt"):
         '''
         :param learning_iterations:          Must be nonnegative integer. The number of training cycles to run.
         :param N:                           Must be nonnegative integer. Maximum micro classifier population size (sum of classifier numerosities).
@@ -258,10 +258,8 @@ class ExSTraCS(BaseEstimator,ClassifierMixin):
         self.rule_compaction = rule_compaction
         self.reboot_filename = reboot_filename
         self.discrete_attribute_limit = discrete_attribute_limit
-        self.specified_attributes = specified_attributes
         self.track_accuracy_while_fit = track_accuracy_while_fit
         self.random_state = random_state
-
         self.hasTrained = False
         self.trackingObj = TempTrackingObj()
         self.record = IterationRecord()
@@ -273,6 +271,14 @@ class ExSTraCS(BaseEstimator,ClassifierMixin):
         else:
             self.iterationCount = 0
             self.population = ClassifierSet()
+
+        self.level = level
+
+        log_trainingfile_path = log_dir + log_trainingfile_name
+        self.log_trainingfile = open(log_trainingfile_path, 'w', newline='')
+        self.log_trainingfile.write("IterationNo Accuracy PopulationNumerosity Population\n")
+
+
 
     def checkIsInt(self, num):
         try:
@@ -292,7 +298,7 @@ class ExSTraCS(BaseEstimator,ClassifierMixin):
             return False
 
     ##*************** Fit ****************
-    def fit(self, X, y):
+    def fit(self, X, y,tx,ty):
         """Scikit-learn required: Supervised training of exstracs
              Parameters
             X: array-like {n_samples, n_features} Training instances. ALL INSTANCE ATTRIBUTES MUST BE NUMERIC or NAN
@@ -336,7 +342,7 @@ class ExSTraCS(BaseEstimator,ClassifierMixin):
 
         # Set up tracking metrics
         self.trackingAccuracy = []
-        self.movingAvgCount = 50
+        self.movingAvgCount = 100
         aveGenerality = 0
         aveGeneralityFreq = min(self.env.formatData.numTrainInstances, 1000)
 
@@ -369,6 +375,17 @@ class ExSTraCS(BaseEstimator,ClassifierMixin):
             else:
                 accuracy = 0
 
+            ###############################################################################################
+            if self.iterationCount % self.movingAvgCount == 0:
+                popNmrsty = 0
+                for i in range(len(self.population.popSet)):
+                    popNmrsty += self.population.popSet[i].numerosity
+
+                print("{:d} {:.4f} {:d} {:d}".format(self.iterationCount, accuracy, popNmrsty, len(self.population.popSet)))
+                self.log_trainingfile.write("{:d} {:.4f} {:d} {:d}\n".format(self.iterationCount, accuracy, popNmrsty, len(self.population.popSet)))
+                self.log_trainingfile.flush()            
+            
+            ###############################################################################################
             self.timer.updateGlobalTimer()
             self.addToTracking(accuracy,aveGenerality)
             self.timer.stopTimeEvaluation()
@@ -377,6 +394,15 @@ class ExSTraCS(BaseEstimator,ClassifierMixin):
             self.iterationCount += 1
             self.env.newInstance()
 
+            #debug
+            #if self.iterationCount in [1000, 1500, 2200, 3300, 5000, 7600, 11000, 17000, 25000, 38000, 57000, 86000, 130000, 190000, 290000, 440000, 660000, 990000, 1500000, 2200000,3300000]:
+            #if self.iterationCount in []:
+            #    self.score(tx,ty)
+            #debug
+            #if self.iterationCount%5000 == 0:
+            #    self.hasTrained = True
+            #    self.export_final_rule_population(filename='c_population.csv',RCPopulation=True,DCAL=True)
+            #    self.hasTrained = False
         self.preRCPop = copy.deepcopy(self.population.popSet)
         #Rule Compaction
         if self.rule_compaction != None:

@@ -34,7 +34,7 @@ class ClassifierSet:
         while doCovering:
             newCl = Classifier(model)
             newCl.initializeByCovering(model,setNumerositySum+1,state,phenotype)
-            if len(newCl.specifiedAttList) > 0: #ADDED CHECK TO PREVENT FULLY GENERALIZED RULES
+            if len(newCl.getWorkingCondition()) > 0: #ADDED CHECK TO PREVENT FULLY GENERALIZED RULES
                 self.addClassifierToPopulation(model,newCl,True)
                 self.matchSet.append(len(self.popSet)-1)
                 model.trackingObj.coveringCount += 1
@@ -192,15 +192,15 @@ class ClassifierSet:
     def insertDiscoveredClassifiers(self,model,cl1,cl2,clP1,clP2):
         if model.do_GA_subsumption:
             model.timer.startTimeSubsumption()
-            if len(cl1.specifiedAttList) > 0:
+            if len(cl1.getWorkingCondition()) > 0:
                 self.subsumeClassifier(model,cl1, clP1, clP2)
-            if len(cl2.specifiedAttList) > 0:
+            if len(cl2.getWorkingCondition()) > 0:
                 self.subsumeClassifier(model,cl2, clP1, clP2)
             model.timer.stopTimeSubsumption()
         else:
-            if len(cl1.specifiedAttList) > 0:
+            if len(cl1.getWorkingCondition()) > 0:
                 self.addClassifierToPopulation(model,cl1,False)
-            if len(cl2.specifiedAttList) > 0:
+            if len(cl2.getWorkingCondition()) > 0:
                 self.addClassifierToPopulation(model,cl2,False)
 
     def subsumeClassifier(self, model,cl, cl1P, cl2P):
@@ -214,7 +214,7 @@ class ClassifierSet:
             cl2P.updateNumerosity(1)
             model.trackingObj.subsumptionCount += 1
         else:
-            if len(cl.specifiedAttList) > 0:
+            if len(cl.getWorkingCondition()) > 0:
                 self.addClassifierToPopulation(model, cl, False)
 
     def selectClassifierRW(self):

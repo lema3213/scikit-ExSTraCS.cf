@@ -131,31 +131,24 @@ class IterationRecord():
         if len(headerNames) != numAttributes:
             raise Exception("# of Header Names provided does not match the number of attributes in dataset instances.")
 
-        with open(filename, mode='w') as file:
+        with open(filename, mode='w',newline="",) as file:
             writer = csv.writer(file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
 
-            writer.writerow(["Specified Values","Specified Attribute Names"]+[className]+["Fitness","Accuracy","Numerosity","Avg Match Set Size","TimeStamp GA","Iteration Initialized","Specificity","Deletion Probability","Correct Count","Match Count","Epoch Complete"])
+            writer.writerow(["Code Fragments"]+[className]+["Fitness","Accuracy","Numerosity","Avg Match Set Size","TimeStamp GA","Iteration Initialized","Specificity","Deletion Probability","Correct Count","Match Count","Epoch Complete"])
 
             classifiers = popSet
             for classifier in classifiers:
                 a = []
 
                 #Add attribute information
-                headerString = ""
-                valueString = ""
-                for attributeIndex in range(numAttributes):
-                    if attributeIndex in classifier.specifiedAttList:
-                        specifiedLocation = classifier.specifiedAttList.index(attributeIndex)
-                        headerString+=str(headerNames[attributeIndex])+", "
-                        if not isinstance(classifier.condition[specifiedLocation],list): #if discrete
-                            valueString+= str(classifier.condition[specifiedLocation])+", "
-                        else: #if continuous
-                            conditionCont = classifier.condition[specifiedLocation] #cont array [min,max]
-                            s = "["+str(conditionCont[0])+","+str(conditionCont[1])+"]"
-                            valueString+= s+", "
+                a = []
 
-                a.append(valueString[:-2])
-                a.append(headerString[:-2])
+                #Add attribute information
+                valueString = ""
+                for cd in classifier.condition:
+                    valueString += "["+str(cd)+']'
+
+                a.append(valueString)
 
                 #Add phenotype information
                 if isinstance(classifier.phenotype, list):
@@ -171,7 +164,7 @@ class IterationRecord():
                 a.append(classifier.aveMatchSetSize)
                 a.append(classifier.timeStampGA)
                 a.append(classifier.initTimeStamp)
-                a.append(len(classifier.specifiedAttList) / numAttributes)
+                a.append(len(classifier.getWorkingCondition()) / numAttributes)
                 a.append(classifier.deletionProb)
                 a.append(classifier.correctCount)
                 a.append(classifier.matchCount)

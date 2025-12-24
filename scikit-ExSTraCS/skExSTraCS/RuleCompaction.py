@@ -303,7 +303,7 @@ class RuleCompaction:
     def approach_QRF(self):
         retainedClassifiers = []
         for i in range(len(self.pop.popSet)):
-            if self.pop.popSet[i].accuracy <= 0.5 or (self.pop.popSet[i].correctCover == 1 and len(self.pop.popSet[i].specifiedAttList) > 1):
+            if self.pop.popSet[i].accuracy <= 0.5 or (self.pop.popSet[i].correctCover == 1 and len(self.pop.popSet[i].getWorkingCondition()) > 1):
                 pass
             else:
                 retainedClassifiers.append(self.pop.popSet[i])

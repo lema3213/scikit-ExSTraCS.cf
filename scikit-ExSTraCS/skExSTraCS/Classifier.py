@@ -2,6 +2,9 @@ import random
 import copy
 import numpy as np
 
+from skExSTraCS.CodeFragment import CodeFragment
+from skExSTraCS.Condition import Condition
+
 class Classifier:
     def __init__(self,model):
         self.specifiedAttList = []
@@ -40,77 +43,66 @@ class Classifier:
         self.phenotype = phenotype
 
         toSpecify = random.randint(1, model.rule_specificity_limit)
-        if model.doExpertKnowledge:
+
+        for attRef in range(toSpecify):
+            condition = self.buildMatch(model, state)  # Add classifierConditionElement
+            if condition is None:
+                condition = Condition()
+            self.condition.append(condition)
+
+        if len(self.condition) < len(state):
             i = 0
-            while len(self.specifiedAttList) < toSpecify and i < model.env.formatData.numAttributes - 1:
-                target = model.EK.EKRank[i]
-                if state[target] != None:
-                    self.specifiedAttList.append(target)
-                    self.condition.append(self.buildMatch(model,target,state))
-                i += 1
-        else:
-            potentialSpec = random.sample(range(model.env.formatData.numAttributes),toSpecify)
-            for attRef in potentialSpec:
-                if state[attRef] != None:
-                    self.specifiedAttList.append(attRef)
-                    self.condition.append(self.buildMatch(model,attRef,state))
+            while (len(state) - len(self.condition))>0:
+                self.condition.append(Condition())
+                i+=1
 
-    def buildMatch(self,model,attRef,state):
-        attributeInfoType = model.env.formatData.attributeInfoType[attRef]
-        if not (attributeInfoType):  # Discrete
-            attributeInfoValue = model.env.formatData.attributeInfoDiscrete[attRef]
-        else:
-            attributeInfoValue = model.env.formatData.attributeInfoContinuous[attRef]
+    def buildMatch(self,model,state):
+        attributes = list(range(0, model.env.formatData.numAttributes))
+        for i in range(100):
 
-        if attributeInfoType: #Continuous Attribute
-            attRange = attributeInfoValue[1] - attributeInfoValue[0]
-            rangeRadius = random.randint(25, 75) * 0.01 * attRange / 2.0  # Continuous initialization domain radius.
-            Low = state[attRef] - rangeRadius
-            High = state[attRef] + rangeRadius
-            condList = [Low, High]
-        else:
-            condList = state[attRef]
-        return condList
+            cf = CodeFragment.createCodeFragment(variables=attributes, level=model.level)
+
+            result = CodeFragment.evaluate(cf, state)
+
+            if result > 0.5:
+                condition = Condition(cf)
+            else:
+                continue
+            # Check if current rule already contains this expression
+            if condition.expression in [cd.expression for cd in self.condition if not cd.is_dc]:
+                continue
+
+            return condition
+        return None
 
     def updateEpochStatus(self,model):
         if not self.epochComplete and (model.iterationCount - self.initTimeStamp - 1) >= model.env.formatData.numTrainInstances:
             self.epochComplete = True
 
     def match(self, model, state):
-        for i in range(len(self.condition)):
-            specifiedIndex = self.specifiedAttList[i]
-            attributeInfoType = model.env.formatData.attributeInfoType[specifiedIndex]
-            # Continuous
-            if attributeInfoType:
-                instanceValue = state[specifiedIndex]
-                if instanceValue == None:
-                    return False
-                elif self.condition[i][0] < instanceValue < self.condition[i][1]:
-                    pass
-                else:
-                    return False
+        condition = self.condition
 
-            # Discrete
-            else:
-                stateRep = state[specifiedIndex]
-                if stateRep == self.condition[i]:
-                    pass
-                elif stateRep == None:
-                    return False
-                else:
-                    return False
+        for cd in condition:
+            if cd.is_dc:
+                continue
+            result = CodeFragment.evaluate(cd.codeFragment, state)
+
+            if result <= 0.5:
+                return False
+
         return True
 
     def equals(self,cl):
-        if cl.phenotype == self.phenotype and len(cl.specifiedAttList) == len(self.specifiedAttList):
-            clRefs = sorted(cl.specifiedAttList)
-            selfRefs = sorted(self.specifiedAttList)
-            if clRefs == selfRefs:
-                for i in range(len(cl.specifiedAttList)):
-                    tempIndex = self.specifiedAttList.index(cl.specifiedAttList[i])
-                    if not (cl.condition[i] == self.condition[tempIndex]):
-                        return False
-                return True
+        if cl.phenotype == self.phenotype and len(cl.getWorkingCondition()) == len(self.getWorkingCondition()):
+            for cd in cl.condition:
+                if cd.is_dc:
+                    continue
+
+                idx = self.findIndexByExpression(self, cd.expression)
+                if idx is None or str(cd) != str(self.condition[idx]):
+                    return False
+            return True
+
         return False
 
     def updateExperience(self):
@@ -152,20 +144,17 @@ class Classifier:
         return cl.phenotype == self.phenotype and self.isSubsumer(model) and self.isMoreGeneral(model,cl)
 
     def isMoreGeneral(self,model, cl):
-        if len(self.specifiedAttList) >= len(cl.specifiedAttList):
+        if len(self.getWorkingCondition()) >= len(cl.getWorkingCondition()):
             return False
-        for i in range(len(self.specifiedAttList)):
-            attributeInfoType = model.env.formatData.attributeInfoType[self.specifiedAttList[i]]
-            if self.specifiedAttList[i] not in cl.specifiedAttList:
+
+        for i in range(len(self.condition)):
+            cd = self.condition[i]
+            if cd.is_dc:
+                continue
+            clIndex = self.findIndexByExpression(cl, cd.expression)
+            if clIndex is None:
                 return False
 
-            # Continuous
-            if attributeInfoType:
-                otherRef = cl.specifiedAttList.index(self.specifiedAttList[i])
-                if self.condition[i][0] > cl.condition[otherRef][0]:
-                    return False
-                if self.condition[i][1] < cl.condition[otherRef][1]:
-                    return False
         return True
 
     def updateTimeStamp(self, ts):
@@ -173,98 +162,17 @@ class Classifier:
         self.timeStampGA = ts
 
     def uniformCrossover(self,model,cl):
-        p_self_specifiedAttList = copy.deepcopy(self.specifiedAttList)
-        p_cl_specifiedAttList = copy.deepcopy(cl.specifiedAttList)
-
-        useAT = model.do_attribute_feedback and random.random() < model.AT.percent
-
-        comboAttList = []
-        for i in p_self_specifiedAttList:
-            comboAttList.append(i)
-        for i in p_cl_specifiedAttList:
-            if i not in comboAttList:
-                comboAttList.append(i)
-            elif not model.env.formatData.attributeInfoType[i]:  # Attribute specified in both parents, and the attribute is discrete (then no reason to cross over)
-                comboAttList.remove(i)
-        comboAttList.sort()
-
         changed = False
-        for attRef in comboAttList:
-            attributeInfoType = model.env.formatData.attributeInfoType[attRef]
-            if useAT:
-                probability = model.AT.getTrackProb()[attRef]
-            else:
-                probability = 0.5
+        x = random.randint(0, len(self.condition))
+        y = random.randint(0, len(cl.condition))
 
-            ref = 0
-            if attRef in p_self_specifiedAttList:
-                ref += 1
-            if attRef in p_cl_specifiedAttList:
-                ref += 1
+        if x > y:
+            x, y = y, x
 
-            if ref == 0:
-                pass
-            elif ref == 1:
-                if attRef in p_self_specifiedAttList and random.random() > probability:
-                    i = self.specifiedAttList.index(attRef)
-                    cl.condition.append(self.condition.pop(i))
-
-                    cl.specifiedAttList.append(attRef)
-                    self.specifiedAttList.remove(attRef)
-                    changed = True
-
-                if attRef in p_cl_specifiedAttList and random.random() < probability:
-                    i = cl.specifiedAttList.index(attRef)
-                    self.condition.append(cl.condition.pop(i))
-
-                    self.specifiedAttList.append(attRef)
-                    cl.specifiedAttList.remove(attRef)
-                    changed = True
-            else:
-                # Continuous Attribute
-                if attributeInfoType:
-                    i_cl1 = self.specifiedAttList.index(attRef)
-                    i_cl2 = cl.specifiedAttList.index(attRef)
-                    tempKey = random.randint(0, 3)
-                    if tempKey == 0:
-                        temp = self.condition[i_cl1][0]
-                        self.condition[i_cl1][0] = cl.condition[i_cl2][0]
-                        cl.condition[i_cl2][0] = temp
-                    elif tempKey == 1:
-                        temp = self.condition[i_cl1][1]
-                        self.condition[i_cl1][1] = cl.condition[i_cl2][1]
-                        cl.condition[i_cl2][1] = temp
-                    else:
-                        allList = self.condition[i_cl1] + cl.condition[i_cl2]
-                        newMin = min(allList)
-                        newMax = max(allList)
-                        if tempKey == 2:
-                            self.condition[i_cl1] = [newMin, newMax]
-                            cl.condition.pop(i_cl2)
-
-                            cl.specifiedAttList.remove(attRef)
-                        else:
-                            cl.condition[i_cl2] = [newMin, newMax]
-                            self.condition.pop(i_cl1)
-
-                            self.specifiedAttList.remove(attRef)
-
-                # Discrete Attribute
-                else:
-                    pass
-
-        #Specification Limit Check
-        if len(self.specifiedAttList) > model.rule_specificity_limit:
-            self.specLimitFix(model,self)
-        if len(cl.specifiedAttList) > model.rule_specificity_limit:
-            self.specLimitFix(model,cl)
-
-        tempList1 = copy.deepcopy(p_self_specifiedAttList)
-        tempList2 = copy.deepcopy(cl.specifiedAttList)
-        tempList1.sort()
-        tempList2.sort()
-        if changed and (tempList1 == tempList2):
-            changed = False
+        for i in range(x, y):
+            if str(self.condition[i]) != str(cl.condition[i]):
+                self.condition[i], cl.condition[i] = cl.condition[i], self.condition[i]
+                changed = True
         return changed
 
     def specLimitFix(self, model, cl):
@@ -300,112 +208,47 @@ class Classifier:
         self.fitness = fit
 
     def mutation(self,model,state):
-        """ Mutates the condition of the classifier. Also handles phenotype mutation. This is a niche mutation, which means that the resulting classifier will still match the current instance.  """
-        pressureProb = 0.5  # Probability that if EK is activated, it will be applied.
-        useAT = model.do_attribute_feedback and random.random() < model.AT.percent
         changed = False
-
-        steps = 0
-        keepGoing = True
-        while keepGoing:
+        # Mutate Condition
+        for i in range(len(self.condition)):
+            cd = self.condition[i]
             if random.random() < model.mu:
-                steps += 1
-            else:
-                keepGoing = False
-
-        # Define Spec Limits
-        if (len(self.specifiedAttList) - steps) <= 1:
-            lowLim = 1
-        else:
-            lowLim = len(self.specifiedAttList) - steps
-        if (len(self.specifiedAttList) + steps) >= model.rule_specificity_limit:
-            highLim = model.rule_specificity_limit
-        else:
-            highLim = len(self.specifiedAttList) + steps
-        if len(self.specifiedAttList) == 0:
-            highLim = 1
-
-        # Get new rule specificity.
-        newRuleSpec = random.randint(lowLim, highLim)
-
-        # MAINTAIN SPECIFICITY
-        if newRuleSpec == len(self.specifiedAttList) and random.random() < (1 - model.mu):
-            #Remove random condition element
-            if not model.doExpertKnowledge or random.random() > pressureProb:
-                genTarget = random.sample(self.specifiedAttList,1)
-            else:
-                genTarget = self.selectGeneralizeRW(model,1)
-
-            attributeInfoType = model.env.formatData.attributeInfoType[genTarget[0]]
-            if not attributeInfoType or random.random() > 0.5:
-                if not useAT or random.random() > model.AT.getTrackProb()[genTarget[0]]:
-                    # Generalize Target
-                    i = self.specifiedAttList.index(genTarget[0])  # reference to the position of the attribute in the rule representation
-                    self.specifiedAttList.remove(genTarget[0])
-                    self.condition.pop(i)  # buildMatch handles both discrete and continuous attributes
-                    changed = True
-            else:
-                self.mutateContinuousAttributes(model,useAT, genTarget[0])
-
-            #Add random condition element
-            if len(self.specifiedAttList) >= len(state):
-                pass
-            else:
-                if not model.doExpertKnowledge or random.random() > pressureProb:
-                    pickList = list(range(model.env.formatData.numAttributes))
-                    for i in self.specifiedAttList:
-                        pickList.remove(i)
-                    specTarget = random.sample(pickList,1)
-                else:
-                    specTarget = self.selectSpecifyRW(model,1)
-
-                if state[specTarget[0]] != None and (not useAT or random.random() < model.AT.getTrackProb()[specTarget[0]]):
-                    self.specifiedAttList.append(specTarget[0])
-                    self.condition.append(self.buildMatch(model,specTarget[0],state))  # buildMatch handles both discrete and continuous attributes
-                    changed = True
-                if len(self.specifiedAttList) > model.rule_specificity_limit:
-                    self.specLimitFix(model,self)
-
-        #Increase Specificity
-        elif newRuleSpec > len(self.specifiedAttList): #Specify more attributes
-            change = newRuleSpec - len(self.specifiedAttList)
-            if not model.doExpertKnowledge or random.random() > pressureProb:
-                pickList = list(range(model.env.formatData.numAttributes))
-                for i in self.specifiedAttList: # Make list with all non-specified attributes
-                    pickList.remove(i)
-                specTarget = random.sample(pickList,change)
-            else:
-                specTarget = self.selectSpecifyRW(model,change)
-            for j in specTarget:
-                if state[j] != None and (not useAT or random.random() < model.AT.getTrackProb()[j]):
-                    #Specify Target
-                    self.specifiedAttList.append(j)
-                    self.condition.append(self.buildMatch(model,j, state)) #buildMatch handles both discrete and continuous attributes
-                    changed = True
-
-        #Decrease Specificity
-        elif newRuleSpec < len(self.specifiedAttList): # Generalize more attributes.
-            change = len(self.specifiedAttList) - newRuleSpec
-            if not model.doExpertKnowledge or random.random() > pressureProb:
-                genTarget = random.sample(self.specifiedAttList,change)
-            else:
-                genTarget = self.selectGeneralizeRW(model,change)
-
-            #-------------------------------------------------------
-            # DISCRETE OR CONTINUOUS ATTRIBUTE - remove attribute specification with 50% chance if we have continuous attribute, or 100% if discrete attribute.
-            #-------------------------------------------------------
-            for j in genTarget:
-                attributeInfoType = model.env.formatData.attributeInfoType[j]
-                if not attributeInfoType or random.random() > 0.5: #GEN/SPEC OPTION
-                    if not useAT or random.random() > model.AT.getTrackProb()[j]:
-                        i = self.specifiedAttList.index(j) #reference to the position of the attribute in the rule representation
-                        self.specifiedAttList.remove(j)
-                        self.condition.pop(i) #buildMatch handles both discrete and continuous attributes
+                # Mutation
+                if cd.is_dc:
+                    # dc -> cf
+                    condition = self.buildMatch(model, state)
+                    if condition is not None:
+                        self.condition[i] = condition
                         changed = True
                 else:
-                    self.mutateContinuousAttributes(model,useAT,j)
+                    # cf -> dc
+                    if random.random() > 0.5:
+                        self.condition[i]= Condition()
+                        changed = True
+                    else: # cf -> new cf
+                        condition = self.buildMatch(model, state)
+                        if condition is not None:
+                            self.condition[i] = condition
+                            changed = True
 
+        # Mutate Phenotype
+        if model.env.formatData.discretePhenotype:
+            nowChanged = self.discretePhenotypeMutation(model)
+
+        if changed or nowChanged:
+            return True
+
+
+    def discretePhenotypeMutation(self, model):
+        changed = False
+        if random.random() < model.mu:
+            phenotypeList = copy.deepcopy(model.env.formatData.phenotypeList)
+            phenotypeList.remove(self.phenotype)
+            newPhenotype = random.choice(phenotypeList)
+            self.phenotype = newPhenotype
+            changed = True
         return changed
+
 
     def selectGeneralizeRW(self,model,count):
         probList = []
@@ -552,3 +395,38 @@ class Classifier:
         else:
             deletionVote = self.aveMatchSetSize * self.numerosity * meanFitness / (self.fitness / self.numerosity)
         return deletionVote
+
+    def findIndexByExpression(self, cl, expression):
+        for i, cond in enumerate(cl.condition):
+            if cond.expression == expression:
+                return i
+        return None
+
+    def getWorkingCondition(self):
+        return [cd for cd in self.condition if not cd.is_dc]
+
+    def getDcCondition(self):
+        return [cd for cd in self.condition if cd.is_dc]
+
+    def getIndexByExpression(self, cl, expression):
+        for i, cond in enumerate(cl.condition):
+            if cond.expression == expression:
+                return i
+
+    def getWorkingConditionIndexs(self):
+        return [i for i,cd in self.condition if not cd.is_dc]
+
+    def getWorkingConditionIndex(self):
+        indexs = self.getWorkingConditionIndexs()
+        if indexs:
+            return indexs[0]
+        return None
+
+    def getDcConditionIndexs(self):
+        return [i for i,cd in self.condition if cd.is_dc]
+
+    def getDcConditionIndex(self):
+        indexs = self.getDcConditionIndexs()
+        if indexs:
+            return indexs[0]
+        return None
