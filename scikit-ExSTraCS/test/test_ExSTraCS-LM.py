@@ -30,8 +30,9 @@ train_headers, train_classLabel, train_dataFeatures, train_dataPhenotypes = trai
 learning_iterations = 100000
 N = 2000
 level = 1
+p_spec = 0.66
 
-model = ExSTraCS(learning_iterations=learning_iterations, N=N,level=level,log_dir=log_dir, log_trainingfile_name=log_trainingfile_name)
+model = ExSTraCS(learning_iterations=learning_iterations, N=N,level=level,p_spec=p_spec,log_dir=log_dir, log_trainingfile_name=log_trainingfile_name)
 
 test_converter = StringEnumerator(test_file,'Class')
 test_headers, test_classLabel, test_dataFeatures, test_dataPhenotypes = test_converter.get_params()

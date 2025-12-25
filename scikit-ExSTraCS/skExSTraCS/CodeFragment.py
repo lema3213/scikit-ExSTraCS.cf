@@ -72,10 +72,13 @@ class CodeFragment:
         # - Stop if current_depth reaches MAX_DEPTH, OR
         # - Stop early with 50% probability (random.random() > 0.5)
         if current_depth == CodeFragment.MAX_DEPTH or (random.random() > 0.5):
-            # Level-1 CF: terminal must be a raw feature D<idx>
+            # Level-1 CF: terminal must be a raw feature D<idx>, except when current_depth == 0。
             if current_level == 1:
-                position = random.choice(variables)
-                return CodeFragment('D' + str(position), position=position)
+                if current_depth == 0:
+                    pass # avoid creating one feature(without operator) condition
+                else:
+                    position = random.choice(variables)
+                    return CodeFragment('D' + str(position), position=position)
             else:
                 # For higher-level CFs:
                 # - If we are generating at the top level (current_level == max_level),

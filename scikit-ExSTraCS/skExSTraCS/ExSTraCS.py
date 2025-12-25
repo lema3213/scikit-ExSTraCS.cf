@@ -21,7 +21,7 @@ class ExSTraCS(BaseEstimator,ClassifierMixin):
                  do_correct_set_subsumption=False,do_GA_subsumption=True,selection_method='tournament',do_attribute_tracking=False,
                  do_attribute_feedback=False,attribute_tracking_method='add',attribute_tracking_beta = 0.1,expert_knowledge=None,
                  rule_compaction='QRF',reboot_filename=None,discrete_attribute_limit=10,specified_attributes=np.array([]),
-                 track_accuracy_while_fit=True,random_state=None,level=1,log_dir="",log_trainingfile_name="ab.txt"):
+                 track_accuracy_while_fit=True,random_state=None,level=1,p_spec = 0.5,log_dir="",log_trainingfile_name="ab.txt"):
         '''
         :param learning_iterations:          Must be nonnegative integer. The number of training cycles to run.
         :param N:                           Must be nonnegative integer. Maximum micro classifier population size (sum of classifier numerosities).
@@ -273,6 +273,7 @@ class ExSTraCS(BaseEstimator,ClassifierMixin):
             self.population = ClassifierSet()
 
         self.level = level
+        self.p_spec = p_spec
 
         log_trainingfile_path = log_dir + log_trainingfile_name
         self.log_trainingfile = open(log_trainingfile_path, 'w', newline='')

@@ -41,20 +41,17 @@ class Classifier:
         self.initTimeStamp = model.iterationCount
         self.aveMatchSetSize = setSize
         self.phenotype = phenotype
+        cond_len = len(state)
+        toSpecify = int(model.p_spec * cond_len)
 
-        toSpecify = random.randint(1, model.rule_specificity_limit)
-
-        for attRef in range(toSpecify):
-            condition = self.buildMatch(model, state)  # Add classifierConditionElement
+        condSpecified = random.sample(range(cond_len), toSpecify)
+        for attRef in range(cond_len):
+            condition = None
+            if attRef in condSpecified:
+                condition = self.buildMatch(model, state)  # Add classifierConditionElement
             if condition is None:
                 condition = Condition()
             self.condition.append(condition)
-
-        if len(self.condition) < len(state):
-            i = 0
-            while (len(state) - len(self.condition))>0:
-                self.condition.append(Condition())
-                i+=1
 
     def buildMatch(self,model,state):
         attributes = list(range(0, model.env.formatData.numAttributes))
